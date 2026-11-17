@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Management Report</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:#F2F4F5;color:#202124;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .card{width:100%;max-width:420px;margin:20px;background:#fff;border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.08);padding:28px 22px;text-align:center}
+  .icon{width:64px;height:64px;margin:0 auto 14px;border-radius:50%;background:#243746;color:#fff;font-size:30px;display:flex;align-items:center;justify-content:center}
+  h1{font-size:20px;margin:0 0 4px;color:#243746}
+  .en{font-size:12px;color:#7B858B;margin-bottom:16px}
+  .file{background:#F2F4F5;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:bold;color:#243746;word-break:break-all;margin-bottom:22px;direction:ltr}
+  .btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;margin:10px 0;border:0;border-radius:12px;font-size:17px;font-weight:bold;text-decoration:none;cursor:pointer;font-family:inherit}
+  .btn small{font-size:12px;font-weight:normal;opacity:.85}
+  .download{background:#243746;color:#fff}
+  .preview{background:#35B7A5;color:#fff}
+  .share{background:#E9EEF0;color:#243746}
+  .btn[disabled]{opacity:.55;cursor:default}
+  .msg{font-size:13px;color:#626A70;min-height:18px;margin-top:8px}
+  .err{color:#B34343;font-weight:bold}
+  .foot{font-size:11px;color:#9AA2A7;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">📊</div>
+  <h1>تقرير الإدارة</h1>
+  <div class="en">Management Report</div>
+  <div class="file" id="fileName">…</div>
+
+  <div id="actions">
+    <a id="downloadBtn" class="btn download">⬇ تحميل التقرير <small>Download</small></a>
+    <a id="previewBtn" class="btn preview" target="_blank" rel="noopener">👁 معاينة <small>Preview</small></a>
+    <button id="shareBtn" class="btn share" disabled>📤 مشاركة <small>Share</small></button>
+  </div>
+
+  <div id="msg" class="msg">جارٍ تجهيز الملف…</div>
+  <div class="foot">الرابط مؤقت ويُحذف تلقائيًا · Temporary link</div>
+</div>
+
+<script>
+  // ===== SETTINGS (no secret here — this is the public project URL) =====
+  const SUPABASE_URL = 'https://odtzdbzqgifbmfzjrqok.supabase.co';
+  const BUCKET = 'reports';
+  // =====================================================================
+
+  const params = new URLSearchParams(location.search);
+  const objectName = params.get('f') || '';
+  // Stored names are "<16-char random code>-<clean name>.pdf"
+  const cleanName = objectName.replace(/^[0-9a-f]{16}-/i, '') || 'report.pdf';
+
+  const msg = document.getElementById('msg');
+  const shareBtn = document.getElementById('shareBtn');
+  document.getElementById('fileName').textContent = cleanName;
+
+  function fail(text){
+    document.getElementById('actions').style.display = 'none';
+    msg.className = 'msg err';
+    msg.textContent = text;
+  }
+
+  if (!/^[\w\-.]+\.pdf$/i.test(objectName)) {
+    fail('رابط غير صالح · Invalid link');
+  } else {
+    const fileUrl = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + encodeURIComponent(objectName);
+    document.getElementById('downloadBtn').href = fileUrl + '?download=' + encodeURIComponent(cleanName);
+    document.getElementById('previewBtn').href = fileUrl;
+
+    let pdfFile = null;
+
+    fetch(fileUrl)
+      .then(r => {
+        if (!r.ok) throw new Error(r.status);
+        return r.blob();
+      })
+      .then(blob => {
+        pdfFile = new File([blob], cleanName, { type: 'application/pdf' });
+        // Download from memory: works on iPhone and Android without opening a viewer.
+        const blobUrl = URL.createObjectURL(pdfFile);
+        const dl = document.getElementById('downloadBtn');
+        dl.href = blobUrl;
+        dl.download = cleanName;
+        shareBtn.disabled = false;
+        msg.textContent = '';
+      })
+      .catch(() => {
+        fail('انتهت صلاحية التقرير أو تم حذفه. اطلب QR جديدًا. · Report expired.');
+      });
+
+    shareBtn.addEventListener('click', async () => {
+      try {
+        if (pdfFile && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+          await navigator.share({ files: [pdfFile], title: cleanName });
+        } else if (navigator.share) {
+          await navigator.share({ title: cleanName, url: location.href });
+        } else {
+          await navigator.clipboard.writeText(location.href);
+          msg.textContent = 'تم نسخ الرابط · Link copied';
+        }
+      } catch (e) {
+        if (e && e.name !== 'AbortError') msg.textContent = 'تعذرت المشاركة · Share failed';
+      }
+    });
+  }
+</script>
+</body>
+</html>
